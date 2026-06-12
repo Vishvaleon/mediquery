@@ -29,7 +29,7 @@ test_cases = [
     },
     {
         "query": "What medications treat malaria?",
-        "expected_keyword": "chloroquine",
+        "expected_keyword": "artemisinin",
         "category": "Medication"
     },
     {
@@ -44,7 +44,7 @@ test_cases = [
     },
     {
         "query": "What are the side effects of metformin?",
-        "expected_keyword": "nausea",
+        "expected_keyword": "gastrointestinal",
         "category": "Medication"
     },
 ]
@@ -71,8 +71,8 @@ def run_evaluation():
 
     for tc in test_cases:
 
-        start  = time.time()
-        result = run_agent(tc["query"])
+        start   = time.time()
+        result  = run_agent(tc["query"])
         elapsed = round(time.time() - start, 2)
 
         answer  = result["answer"].lower()

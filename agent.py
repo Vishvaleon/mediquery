@@ -162,32 +162,45 @@ def grader_node(state: AgentState) -> AgentState:
 
         try:
 
+            # Sanitize chunk text before sending to LLM
+            safe_content = (
+                doc.page_content[:600]
+                .replace('"', "'")
+                .replace('\n', ' ')
+            )
+
             response = llm.invoke(
                 GRADER_PROMPT.format(
                     query=state["query"],
-                    doc=doc.page_content[:600]
+                    doc=safe_content
                 )
             )
 
             raw = response.strip()
 
+            # Extract just the JSON object, ignore surrounding text
             start = raw.find("{")
             end = raw.rfind("}") + 1
 
             if start != -1 and end > start:
 
-                parsed = json.loads(
-                    raw[start:end]
+                json_str = raw[start:end]
+
+                # Remove any control characters that break JSON
+                json_str = ''.join(
+                    c for c in json_str
+                    if ord(c) >= 32
                 )
 
-                if parsed.get("relevant"):
+                parsed = json.loads(json_str)
 
+                if parsed.get("relevant"):
                     graded.append(doc)
 
         except Exception as e:
 
             log(
-                f"[Grader] Error: {e}"
+                f"[Grader] Parse error: {e} — skipping chunk"
             )
 
     log(
