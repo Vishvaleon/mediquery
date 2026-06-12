@@ -35,6 +35,10 @@ def ingest_pdfs():
 
         docs = loader.load()
 
+        # Store filename in metadata
+        for doc in docs:
+            doc.metadata["source"] = os.path.basename(pdf)
+
         all_docs.extend(docs)
 
     splitter = RecursiveCharacterTextSplitter(
@@ -42,17 +46,36 @@ def ingest_pdfs():
         chunk_overlap=CHUNK_OVERLAP
     )
 
+    # Create chunks
     chunks = splitter.split_documents(
         all_docs
+    )
+
+    # Verify source metadata
+    print(
+        f"\nSources detected:"
+        f"\n{set(d.metadata['source'] for d in chunks)}"
+    )
+
+    print(
+        f"\nCreating embeddings using:"
+        f"\n{EMBED_MODEL}"
     )
 
     embeddings = HuggingFaceEmbeddings(
         model_name=EMBED_MODEL
     )
 
+    print("Building FAISS vector store...")
+
     vectorstore = FAISS.from_documents(
         chunks,
         embeddings
+    )
+
+    os.makedirs(
+        VECTORSTORE_PATH,
+        exist_ok=True
     )
 
     vectorstore.save_local(
@@ -69,4 +92,3 @@ def ingest_pdfs():
 
 if __name__ == "__main__":
     ingest_pdfs()
-
