@@ -23,6 +23,8 @@ class AgentState(TypedDict):
     sources: List[str]
     rewrite_count: int
     route: str
+    confidence_score: int
+    confidence_reason: str
 
 
 # ------------------------------------------------------------------
@@ -109,17 +111,13 @@ def retriever_node(state: AgentState) -> AgentState:
         or state["query"]
     )
 
-    log(
-        f"[Retriever] Searching vectorstore for: '{query}'"
-    )
+    log(f"[Retriever] Searching vectorstore for: '{query}'")
 
     retriever = load_retriever()
 
     docs = retriever.invoke(query)
 
-    log(
-        f"[Retriever] Found {len(docs)} chunks"
-    )
+    log(f"[Retriever] Found {len(docs)} chunks")
 
     return {
         **state,
@@ -132,29 +130,24 @@ def retriever_node(state: AgentState) -> AgentState:
 # ------------------------------------------------------------------
 
 GRADER_PROMPT = PromptTemplate.from_template("""
-You are a relevance grader.
+You are a relevance filter for a medical RAG system.
+Your job is to KEEP chunks that are even partially related to the question topic.
+Only REJECT chunks that are completely unrelated (e.g. question is about malaria, chunk is about surgery equipment).
 
-Question:
-{query}
+Be LIBERAL — when in doubt, keep the chunk.
 
-Document:
-{doc}
+Question: {query}
+Document chunk: {doc}
 
-Respond ONLY with valid JSON.
+Respond ONLY with valid JSON, no explanation:
+{{"relevant": true}} or {{"relevant": false}}
 
-{{"relevant": true}}
-
-or
-
-{{"relevant": false}}
-""")
+JSON:""")
 
 
 def grader_node(state: AgentState) -> AgentState:
 
-    log(
-        "[Grader] Scoring retrieved chunks..."
-    )
+    log("[Grader] Scoring retrieved chunks...")
 
     graded = []
 
@@ -162,7 +155,6 @@ def grader_node(state: AgentState) -> AgentState:
 
         try:
 
-            # Sanitize chunk text before sending to LLM
             safe_content = (
                 doc.page_content[:600]
                 .replace('"', "'")
@@ -178,15 +170,13 @@ def grader_node(state: AgentState) -> AgentState:
 
             raw = response.strip()
 
-            # Extract just the JSON object, ignore surrounding text
             start = raw.find("{")
-            end = raw.rfind("}") + 1
+            end   = raw.rfind("}") + 1
 
             if start != -1 and end > start:
 
                 json_str = raw[start:end]
 
-                # Remove any control characters that break JSON
                 json_str = ''.join(
                     c for c in json_str
                     if ord(c) >= 32
@@ -199,13 +189,16 @@ def grader_node(state: AgentState) -> AgentState:
 
         except Exception as e:
 
-            log(
-                f"[Grader] Parse error: {e} — skipping chunk"
-            )
+            # on parse error, keep the chunk
+            log(f"[Grader] Parse error: {e} — keeping chunk by default")
+            graded.append(doc)
 
-    log(
-        f"[Grader] {len(graded)}/{len(state['retrieved_docs'])} chunks passed"
-    )
+    # fallback: if grader rejected everything, pass all chunks through
+    if not graded:
+        log("[Grader] All chunks rejected — falling back to full retrieved set")
+        graded = state["retrieved_docs"]
+
+    log(f"[Grader] {len(graded)}/{len(state['retrieved_docs'])} chunks passed")
 
     return {
         **state,
@@ -219,10 +212,10 @@ def grader_node(state: AgentState) -> AgentState:
 
 GENERATOR_PROMPT = PromptTemplate.from_template("""
 You are MediQuery, a clinical AI assistant. Answer the question using ONLY the context below.
-Be specific — use exact medical terms, drug names, and clinical keywords from the context.
-Do not paraphrase drug names or symptoms. If the context mentions 'rifampicin', say 'rifampicin'.
-Cite which chunk supports each point.
-If the context is insufficient, say so clearly.
+IMPORTANT: Preserve exact drug names, dosages, and clinical terms verbatim from the context.
+Do not paraphrase drug names — if the context says 'rifampicin', your answer must say 'rifampicin'.
+Be specific. List all relevant drugs, doses, and terms mentioned in the context.
+If the context is insufficient, say so clearly — do not hallucinate.
 
 Question: {query}
 
@@ -235,7 +228,8 @@ Answer:""")
 DIRECT_PROMPT = PromptTemplate.from_template("""
 You are MediQuery.
 
-Answer the question briefly.
+Answer the question briefly using correct clinical terminology.
+State clearly if you are uncertain about any detail.
 
 Question:
 {query}
@@ -246,41 +240,24 @@ Answer:
 
 def generator_node(state: AgentState) -> AgentState:
 
-    log(
-        "[Generator] Synthesizing answer..."
-    )
+    log("[Generator] Synthesizing answer...")
 
-    docs = state.get(
-        "graded_docs",
-        []
-    )
-
-    route = state.get(
-        "route",
-        "retrieve"
-    )
+    docs  = state.get("graded_docs", [])
+    route = state.get("route", "retrieve")
 
     if route == "direct" or not docs:
 
-        log(
-            "[Generator] Using direct answer (no graded docs or direct route)"
-        )
+        log("[Generator] Using direct answer (no graded docs or direct route)")
 
         answer = llm.invoke(
-            DIRECT_PROMPT.format(
-                query=state["query"]
-            )
+            DIRECT_PROMPT.format(query=state["query"])
         )
 
-        sources = [
-            "General medical knowledge"
-        ]
+        sources = ["General medical knowledge"]
 
     else:
 
-        log(
-            f"[Generator] Building answer from {len(docs)} graded doc(s)"
-        )
+        log(f"[Generator] Building answer from {len(docs)} graded doc(s)")
 
         context = "\n\n".join(
             [
@@ -296,19 +273,86 @@ def generator_node(state: AgentState) -> AgentState:
             )
         )
 
-        sources = [
-            doc.page_content[:200] + "..."
-            for doc in docs
-        ]
+        sources = []
+        for doc in docs:
+            filename = doc.metadata.get("source", "unknown")
+            page     = doc.metadata.get("page", "?")
+            snippet  = doc.page_content[:300]
+            sources.append(
+                f"{snippet}\n\nSource: {filename} | Page {page}"
+            )
 
-    log(
-        "[Generator] Answer ready."
-    )
+    log("[Generator] Answer ready.")
 
     return {
         **state,
-        "answer": answer,
+        "answer":  answer,
         "sources": sources
+    }
+
+
+# ------------------------------------------------------------------
+# Confidence Scorer
+# ------------------------------------------------------------------
+
+CONFIDENCE_PROMPT = PromptTemplate.from_template("""
+You are a medical AI quality checker.
+Given a question and an answer, rate the answer's confidence on a scale of 1-10.
+Consider: Is the answer specific? Does it use clinical terms? Could it be hallucinated?
+
+Question: {query}
+
+Answer: {answer}
+
+Respond ONLY with a JSON object like this:
+{{"score": 8, "reason": "Answer uses specific drug names from context"}}
+
+JSON:""")
+
+
+def confidence_node(state: AgentState) -> AgentState:
+
+    log("[Confidence] Scoring answer reliability...")
+
+    score  = 5
+    reason = "Could not score"
+
+    try:
+
+        response = llm.invoke(
+            CONFIDENCE_PROMPT.format(
+                query=state["query"],
+                answer=state["answer"][:500]
+            )
+        )
+
+        raw = response.strip()
+
+        start = raw.find("{")
+        end   = raw.rfind("}") + 1
+
+        if start != -1 and end > start:
+
+            json_str = raw[start:end]
+
+            json_str = ''.join(
+                c for c in json_str
+                if ord(c) >= 32
+            )
+
+            parsed = json.loads(json_str)
+            score  = max(1, min(10, int(parsed.get("score", 5))))
+            reason = str(parsed.get("reason", ""))
+
+    except Exception as e:
+        log(f"[Confidence] Scoring failed: {e}")
+
+    log(f"[Confidence] Score: {score}/10 — {reason}")
+
+    return {
+        **state,
+        "confidence_score":  score,
+        "confidence_reason": reason
     }
 
 
@@ -329,29 +373,23 @@ Rewritten query:""")
 
 def rewrite_node(state: AgentState) -> AgentState:
 
-    count = (
-        state.get("rewrite_count", 0)
-        + 1
-    )
+    count = state.get("rewrite_count", 0) + 1
 
-    log(
-        f"[Rewriter] Attempt {count}"
-    )
+    log(f"[Rewriter] Attempt {count}")
 
     rewritten = llm.invoke(
-        REWRITE_PROMPT.format(
-            query=state["query"]
-        )
+        REWRITE_PROMPT.format(query=state["query"])
     )
 
-    log(
-        f"[Rewriter] Rewritten query: '{rewritten.strip()}'"
-    )
+    # take first line only — prevents multi-line bullet responses
+    rewritten = rewritten.strip().split('\n')[0].strip()
+
+    log(f"[Rewriter] Rewritten query: '{rewritten}'")
 
     return {
         **state,
-        "rewritten_query": rewritten.strip(),
-        "rewrite_count": count
+        "rewritten_query": rewritten,
+        "rewrite_count":   count
     }
 
 
@@ -365,7 +403,6 @@ def route_after_planner(
 
     if state["route"] == "retrieve":
         return "retriever"
-
     return "generator"
 
 
@@ -373,12 +410,13 @@ def route_after_grader(
     state: AgentState
 ) -> Literal["generator", "rewrite"]:
 
+    # grader fallback already fills graded_docs if 0 passed,
+    # so this only triggers rewrite when genuinely 0 docs returned
     if (
         not state["graded_docs"]
         and state.get("rewrite_count", 0) < 2
     ):
         return "rewrite"
-
     return "generator"
 
 
@@ -388,38 +426,16 @@ def route_after_grader(
 
 def build_graph():
 
-    graph = StateGraph(
-        AgentState
-    )
+    graph = StateGraph(AgentState)
 
-    graph.add_node(
-        "planner",
-        planner_node
-    )
+    graph.add_node("planner",    planner_node)
+    graph.add_node("retriever",  retriever_node)
+    graph.add_node("grader",     grader_node)
+    graph.add_node("generator",  generator_node)
+    graph.add_node("confidence", confidence_node)
+    graph.add_node("rewrite",    rewrite_node)
 
-    graph.add_node(
-        "retriever",
-        retriever_node
-    )
-
-    graph.add_node(
-        "grader",
-        grader_node
-    )
-
-    graph.add_node(
-        "generator",
-        generator_node
-    )
-
-    graph.add_node(
-        "rewrite",
-        rewrite_node
-    )
-
-    graph.set_entry_point(
-        "planner"
-    )
+    graph.set_entry_point("planner")
 
     graph.add_conditional_edges(
         "planner",
@@ -430,29 +446,20 @@ def build_graph():
         }
     )
 
-    graph.add_edge(
-        "retriever",
-        "grader"
-    )
+    graph.add_edge("retriever", "grader")
 
     graph.add_conditional_edges(
         "grader",
         route_after_grader,
         {
             "generator": "generator",
-            "rewrite": "rewrite"
+            "rewrite":   "rewrite"
         }
     )
 
-    graph.add_edge(
-        "rewrite",
-        "retriever"
-    )
-
-    graph.add_edge(
-        "generator",
-        END
-    )
+    graph.add_edge("rewrite",    "retriever")
+    graph.add_edge("generator",  "confidence")
+    graph.add_edge("confidence", END)
 
     return graph.compile()
 
@@ -468,31 +475,35 @@ def run_agent(query: str) -> dict:
 
     global _graph, trace_log
 
+    # reset trace for every new query
     trace_log = []
 
     if _graph is None:
         _graph = build_graph()
 
     initial_state = {
-        "query": query,
-        "rewritten_query": query,
-        "retrieved_docs": [],
-        "graded_docs": [],
-        "answer": "",
-        "sources": [],
-        "rewrite_count": 0,
-        "route": "retrieve"
+        "query":             query,
+        "rewritten_query":   query,
+        "retrieved_docs":    [],
+        "graded_docs":       [],
+        "answer":            "",
+        "sources":           [],
+        "rewrite_count":     0,
+        "route":             "retrieve",
+        "confidence_score":  5,
+        "confidence_reason": ""
     }
 
-    final_state = _graph.invoke(
-        initial_state
-    )
+    final_state = _graph.invoke(initial_state)
 
     return {
-        "answer": final_state["answer"],
-        "sources": final_state["sources"],
-        "trace": trace_log,
-        "rewrite_count": final_state["rewrite_count"]
+        "answer":            final_state["answer"],
+        "sources":           final_state["sources"],
+        "trace":             trace_log.copy(),
+        "rewrite_count":     final_state["rewrite_count"],
+        "confidence_score":  final_state.get("confidence_score", 5),
+        "confidence_reason": final_state.get("confidence_reason", ""),
+        "query":             query,
     }
 
 
@@ -519,9 +530,15 @@ if __name__ == "__main__":
         print("\nANSWER:")
         print(result["answer"])
 
+        print("\nSOURCES:")
+        for i, src in enumerate(result["sources"]):
+            print(f"  [{i+1}] {src[:120]}...")
+
         print("\nTRACE:")
         for step in result["trace"]:
             print(" ", step)
 
-        print(f"\nREWRITE COUNT: {result['rewrite_count']}")
+        print(f"\nREWRITE COUNT  : {result['rewrite_count']}")
+        print(f"CONFIDENCE     : {result['confidence_score']}/10")
+        print(f"REASON         : {result['confidence_reason']}")
         print("=" * 60)

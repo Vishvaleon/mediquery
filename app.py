@@ -9,6 +9,7 @@ Features:
   - Response time display
   - Query history in sidebar
   - Evaluation metrics panel in sidebar
+  - Confidence score indicator (color-coded green/amber/red)
 """
 
 import streamlit as st
@@ -60,6 +61,39 @@ st.markdown("""
         color: inherit;
     }
 
+    /* Confidence bar */
+    .confidence-wrap {
+        border-radius: 10px;
+        padding: 10px 14px;
+        margin-bottom: 12px;
+        border: 1px solid rgba(229, 231, 235, 0.4);
+    }
+    .confidence-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 6px;
+        font-size: 12px;
+        font-weight: 600;
+    }
+    .confidence-bar-bg {
+        background: rgba(229, 231, 235, 0.3);
+        border-radius: 4px;
+        height: 6px;
+        overflow: hidden;
+        margin-bottom: 6px;
+    }
+    .confidence-bar-fill {
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.3s ease;
+    }
+    .confidence-reason {
+        font-size: 11px;
+        color: #6b7280;
+        line-height: 1.4;
+    }
+
     /* Trace step */
     .trace-step {
         display: flex;
@@ -78,12 +112,13 @@ st.markdown("""
         border-radius: 6px;
         text-align: center;
     }
-    .node-planner   { background: #ede9fe; color: #5b21b6; }
-    .node-retriever { background: #dbeafe; color: #1d4ed8; }
-    .node-grader    { background: #fef9c3; color: #92400e; }
-    .node-generator { background: #dcfce7; color: #166534; }
-    .node-rewriter  { background: #fee2e2; color: #991b1b; }
-    .node-default   { background: #f3f4f6; color: #374151; }
+    .node-planner    { background: #ede9fe; color: #5b21b6; }
+    .node-retriever  { background: #dbeafe; color: #1d4ed8; }
+    .node-grader     { background: #fef9c3; color: #92400e; }
+    .node-generator  { background: #dcfce7; color: #166534; }
+    .node-rewriter   { background: #fee2e2; color: #991b1b; }
+    .node-confidence { background: #fdf4ff; color: #7e22ce; }
+    .node-default    { background: #f3f4f6; color: #374151; }
 
     /* Source citation */
     .source-badge {
@@ -220,10 +255,11 @@ with st.sidebar:
         st.markdown("""
 **Graph nodes:**
 1. **Planner** — routes to retrieval or direct answer
-2. **Retriever** — fetches top-5 FAISS chunks
+2. **Retriever** — fetches top-8 FAISS chunks
 3. **Grader** — filters chunks for relevance
 4. **Generator** — synthesizes answer from graded chunks
 5. **Rewriter** — rewrites query if no relevant chunks found (max 2×)
+6. **Confidence** — scores answer reliability 1–10
 
 Built with LangGraph + Ollama (llama3) + FAISS
         """)
@@ -300,15 +336,48 @@ if result:
         rewrites  = result.get("rewrite_count", 0)
         elapsed   = result.get("time", 0)
         n_sources = len(result.get("sources", []))
+        score     = result.get("confidence_score", 5)
+        reason    = result.get("confidence_reason", "")
 
         # Metrics row
         st.markdown(
             f'<span class="metric-pill">⏱ {elapsed}s</span>'
             f'<span class="metric-pill">📄 {n_sources} source(s)</span>'
-            f'<span class="metric-pill">🔄 {rewrites} rewrite(s)</span>',
+            f'<span class="metric-pill">🔄 {rewrites} rewrite(s)</span>'
+            f'<span class="metric-pill">🎯 {score}/10 confidence</span>',
             unsafe_allow_html=True
         )
         st.markdown("")
+
+        # ── Confidence bar ──────────────────────────────────────────────────
+        color = (
+            "#22c55e" if score >= 7
+            else "#f59e0b" if score >= 4
+            else "#ef4444"
+        )
+        label = (
+            "High" if score >= 7
+            else "Medium" if score >= 4
+            else "Low"
+        )
+        bar_pct = score * 10  # 1-10 → 10%-100%
+
+        st.markdown(f"""
+        <div class="confidence-wrap" style="border-color: {color}40;">
+            <div class="confidence-header">
+                <span>Answer confidence</span>
+                <span style="color: {color};">
+                    {label} ({score}/10)
+                </span>
+            </div>
+            <div class="confidence-bar-bg">
+                <div class="confidence-bar-fill"
+                     style="width: {bar_pct}%; background: {color};">
+                </div>
+            </div>
+            <div class="confidence-reason">{reason}</div>
+        </div>
+        """, unsafe_allow_html=True)
 
         # Rewrite notice
         if rewrites > 0:
@@ -327,7 +396,7 @@ if result:
         )
 
         # Sources
-        sources = result.get("sources", [])
+        sources    = result.get("sources", [])
         is_general = (
             not sources
             or sources == ["General medical knowledge"]
@@ -371,11 +440,12 @@ if result:
         if trace:
 
             node_map = {
-                "[Planner]":   ("node-planner",   "Planner"),
-                "[Retriever]": ("node-retriever",  "Retriever"),
-                "[Grader]":    ("node-grader",     "Grader"),
-                "[Generator]": ("node-generator",  "Generator"),
-                "[Rewriter]":  ("node-rewriter",   "Rewriter"),
+                "[Planner]":    ("node-planner",    "Planner"),
+                "[Retriever]":  ("node-retriever",  "Retriever"),
+                "[Grader]":     ("node-grader",     "Grader"),
+                "[Generator]":  ("node-generator",  "Generator"),
+                "[Rewriter]":   ("node-rewriter",   "Rewriter"),
+                "[Confidence]": ("node-confidence", "Confidence"),
             }
 
             trace_html = '<div class="trace-container">'
@@ -423,7 +493,6 @@ if result:
             st.info("No trace available for this result.")
 
         # Final rewritten query (if any)
-        rewrites = result.get("rewrite_count", 0)
         if rewrites > 0:
             rewrite_steps = [
                 s for s in trace
