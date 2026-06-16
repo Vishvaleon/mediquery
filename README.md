@@ -1,3 +1,4 @@
+```markdown
 # 🏥 MediQuery — Agentic Clinical RAG System
 
 > **The Arch: RAG and Agentic AI Hackathon** · IIT Kharagpur · Healthcare Track  
@@ -32,6 +33,7 @@ MediQuery is a **production-ready Agentic RAG system** for clinical question ans
 
 ## Architecture
 
+```
 User Query
     │
     ▼
@@ -63,6 +65,9 @@ User Query
       │
       ▼
    Answer + Sources + Trace + Confidence Score
+```
+
+---
 
 ## Tech stack
 
@@ -80,6 +85,7 @@ User Query
 
 ## Project structure
 
+```
 mediquery/
 ├── app.py              ← Streamlit UI (two-column: answer + reasoning trace)
 ├── agent.py            ← LangGraph 6-node agentic loop
@@ -101,7 +107,7 @@ mediquery/
     ├── raw/            ← Drop medical PDFs here (gitignored)
     │   └── sources.md  ← PDF source URLs for reproducibility
     └── vectorstore/    ← FAISS index (gitignored, rebuild locally)
-
+```
 
 ---
 
@@ -115,14 +121,14 @@ mediquery/
 
 ### 1. Clone the repo
 
-bash
+```bash
 git clone https://github.com/Vishvaleon/mediquery.git
 cd mediquery
-
+```
 
 ### 2. Create virtual environment
 
-bash
+```bash
 python -m venv venv
 
 # Windows:
@@ -276,6 +282,6 @@ MIT License — see [LICENSE](LICENSE) for details.
 ---
 
 <div align="center">
-  Built for <strong>The Arch: RAG and Agentic AI Hackathon</strong> · IIT Kharagpur · 2026
+  Built for <strong>The Arch: RAG and Agentic AI Hackathon</strong> · IIT Kharagpur · 2025
 </div>
 ```
