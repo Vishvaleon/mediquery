@@ -1,262 +1,281 @@
 # 🏥 MediQuery — Agentic Clinical RAG System
 
-> **The Arch: RAG and Agentic AI Hackathon** · IIT Kharagpur · Healthcare Track
-> Built with LangGraph · Ollama (Llama 3) · FAISS · Streamlit · Python
+> **The Arch: RAG and Agentic AI Hackathon** · IIT Kharagpur · Healthcare Track  
+> Built with LangGraph · Ollama (llama3) · FAISS · Streamlit · Python
 
-![Python](https://img.shields.io/badge/Python-3.10+-blue?style=flat-square)
-![LangGraph](https://img.shields.io/badge/LangGraph-Agentic-purple?style=flat-square)
-![Ollama](https://img.shields.io/badge/Ollama-Llama3-orange?style=flat-square)
-![Streamlit](https://img.shields.io/badge/Streamlit-UI-red?style=flat-square)
-![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)
-
----
-
-# What it does
-
-MediQuery is an **Agentic Retrieval-Augmented Generation (RAG)** system designed for clinical question answering.
-
-Instead of using a simple retriever + LLM pipeline, MediQuery uses a **LangGraph workflow** that:
-
-* Plans how to answer a question
-* Retrieves relevant medical information
-* Grades retrieved chunks
-* Rewrites poor queries automatically
-* Generates grounded responses
-* Displays a full reasoning trace
-
-**Ask a clinical question and receive an evidence-based answer with transparent retrieval steps.**
+[![Python](https://img.shields.io/badge/Python-3.10+-blue?style=flat-square)](https://python.org)
+[![LangGraph](https://img.shields.io/badge/LangGraph-0.2.14-purple?style=flat-square)](https://github.com/langchain-ai/langgraph)
+[![Ollama](https://img.shields.io/badge/Ollama-llama3-orange?style=flat-square)](https://ollama.com)
+[![Streamlit](https://img.shields.io/badge/Streamlit-1.37-red?style=flat-square)](https://streamlit.io)
+[![License](https://img.shields.io/badge/License-MIT-green?style=flat-square)](LICENSE)
 
 ---
 
-# Features
+## What it does
 
-| Feature             | Description                                             |
-| ------------------- | ------------------------------------------------------- |
-| 🧠 Agentic Planning | Routes queries through retrieval or direct-answer paths |
-| 🔍 FAISS Search     | Semantic search over medical PDF documents              |
-| ✅ Relevance Grading | Filters irrelevant retrieved chunks                     |
-| 🔄 Query Rewriting  | Automatically improves failed searches                  |
-| 📄 Source Tracking  | Preserves source document metadata                      |
-| 👁️ Reasoning Trace | Displays graph execution steps                          |
-| 🔒 Local Inference  | Runs completely on Ollama                               |
+MediQuery is a **production-ready Agentic RAG system** for clinical question answering. It goes beyond basic retrieval-augmented generation by implementing a **6-node LangGraph agent** that plans, retrieves, grades, rewrites, generates, and self-scores every answer.
+
+**Ask a clinical question. Get a cited, confidence-scored answer with full reasoning transparency.**
+
+| Feature | Description |
+|---|---|
+| 🧠 Agentic planning | Routes queries to retrieval or direct answer based on clinical intent |
+| 🔍 FAISS vector search | Semantic search over 36 WHO / NIH / clinical PDF documents |
+| ✅ Relevance grading | Filters retrieved chunks — only contextually relevant content reaches the generator |
+| 🔄 Query rewriting | Auto-rewrites failed queries using medical terminology (max 2 attempts) |
+| 🛡️ Hallucination guard | Self-scores every answer 1–10 with a clinical reasoning explanation |
+| 📄 Source citations | Every answer cites source document filename and page number |
+| 👁️ Reasoning trace | Full agent step-by-step trace visible in the UI |
+| 🔒 100% local & private | Runs on Ollama (llama3) — no data leaves your machine |
 
 ---
 
-# Architecture
+## Architecture
 
-```text
 User Query
     │
     ▼
 ┌─────────┐
-│ Planner │
+│ Planner │ ──── decides: retrieve or direct answer
 └────┬────┘
      │
-     ▼
-┌───────────┐
-│ Retriever │
+  [retrieve]                    [direct]
+     │                              │
+     ▼                              │
+┌───────────┐                       │
+│ Retriever │ ── FAISS top-8 chunks │
+└─────┬─────┘                       │
+      │                             │
+      ▼                             │
+┌────────┐   0 chunks pass?         │
+│ Grader │ ──────────────────► Rewriter (max 2×)
+└───┬────┘                          │
+    │ graded chunks                 │
+    ▼                               │
+┌───────────┐ ◄─────────────────────┘
+│ Generator │ ── synthesizes answer with verbatim clinical terms
 └─────┬─────┘
       │
       ▼
-┌────────┐
-│ Grader │
-└───┬────┘
-    │
-    ▼
-┌───────────┐
-│ Generator │
-└─────┬─────┘
+┌────────────┐
+│ Confidence │ ── scores answer 1–10, flags hallucination risk
+└─────┬──────┘
       │
       ▼
-Answer + Sources + Trace
-```
+   Answer + Sources + Trace + Confidence Score
+
+## Tech stack
+
+| Layer | Technology |
+|---|---|
+| Agent framework | LangGraph 0.2.14 |
+| LLM | Ollama llama3 (8B, local) |
+| Embeddings | pritamdeka/S-PubMedBert-MS-MARCO (biomedical) |
+| Vector store | FAISS (CPU) |
+| Document loader | LangChain PyPDFLoader |
+| UI | Streamlit 1.37 |
+| Language | Python 3.10+ |
 
 ---
 
-# Tech Stack
+## Project structure
 
-| Layer           | Technology            |
-| --------------- | --------------------- |
-| Agent Framework | LangGraph             |
-| LLM             | Ollama (Llama 3)      |
-| Embeddings      | Sentence Transformers |
-| Vector Store    | FAISS                 |
-| Document Loader | PyPDFLoader           |
-| UI              | Streamlit             |
-| Language        | Python 3.10+          |
-
----
-
-# Project Structure
-
-```text
 mediquery/
-│
-├── app.py
-├── agent.py
-├── retriever.py
-├── ingestor.py
-├── config.py
-├── evaluate.py
+├── app.py              ← Streamlit UI (two-column: answer + reasoning trace)
+├── agent.py            ← LangGraph 6-node agentic loop
+├── retriever.py        ← FAISS vector store loader + semantic search
+├── ingestor.py         ← PDF loader, chunker, embedding pipeline
+├── config.py           ← Model names, paths, chunk settings
+├── evaluate.py         ← 8-query evaluation suite with category breakdown
+├── stress_test.py      ← 20-query adversarial stress test (4 failure modes)
+├── debug_check.py      ← Vectorstore keyword coverage diagnostic
 ├── requirements.txt
 ├── README.md
-│
 ├── assets/
 │   ├── architecture.png
 │   ├── demo_screenshot.png
-│   └── reasoning_trace.png
-│
+│   ├── reasoning_trace.png
+│   ├── confidence_bar.png
+│   └── stress_test_results.txt
 └── data/
-    ├── raw/
-    └── vectorstore/
-```
+    ├── raw/            ← Drop medical PDFs here (gitignored)
+    │   └── sources.md  ← PDF source URLs for reproducibility
+    └── vectorstore/    ← FAISS index (gitignored, rebuild locally)
+
 
 ---
 
-# Setup
+## Setup & run
 
-## 1. Clone Repository
+### Prerequisites
 
-```bash
+- Python 3.10+
+- [Ollama](https://ollama.com/download) installed
+- 8 GB RAM minimum (16 GB recommended for llama3)
+
+### 1. Clone the repo
+
+bash
 git clone https://github.com/Vishvaleon/mediquery.git
 cd mediquery
-```
 
-## 2. Create Virtual Environment
 
-### Windows
+### 2. Create virtual environment
 
-```bash
+bash
 python -m venv venv
+
+# Windows:
 venv\Scripts\activate
-```
 
-### Linux / macOS
-
-```bash
-python -m venv venv
+# macOS / Linux:
 source venv/bin/activate
 ```
 
-## 3. Install Dependencies
+### 3. Install dependencies
 
 ```bash
 pip install -r requirements.txt
 ```
 
-## 4. Install Ollama
-
-Download:
-
-https://ollama.com/download
-
-Pull the model:
+### 4. Pull the Ollama model
 
 ```bash
 ollama pull llama3
 ```
 
----
+> This downloads ~4.7 GB. Start this early — it runs in the background.
 
-# Add Medical PDFs
+### 5. Add medical PDFs
 
-Place PDF files inside:
+Download clinical PDFs from the sources listed in `data/raw/sources.md` and place them in `data/raw/`.
 
-```text
-data/raw/
-```
+Recommended minimum (already used in evaluation):
+- WHO Essential Medicines List
+- WHO Malaria Treatment Guidelines 2022
+- WHO Tuberculosis Treatment Guidelines
+- WHO Cardiovascular Disease guidelines
+- WHO Diabetes Action Plan
+- NIH metformin drug monograph
+- Ibuprofen prescribing information
 
-Example sources:
-
-* WHO Clinical Guidelines
-* WHO Essential Medicines List
-* CDC Reports
-* NIH Medical References
-
----
-
-# Build Vector Store
+### 6. Build the vectorstore
 
 ```bash
 python ingestor.py
 ```
 
-Expected output:
+### 7. (Optional) Verify keyword coverage
 
-```text
-✓ Ingested PDFs
-✓ Created chunks
-✓ Saved vector store
+```bash
+python debug_check.py
 ```
 
----
+All 8 core clinical keywords should show ✅ before running the app.
 
-# Run the Application
+### 8. Launch the app
 
 ```bash
 streamlit run app.py
 ```
 
-Open:
-
-```text
-http://localhost:8501
-```
+Opens at `http://localhost:8501`
 
 ---
 
-# Example Queries
+## Evaluation results
 
-```text
-What are the symptoms of pneumonia?
+### Standard evaluation (8 queries)
 
-What is the first-line treatment for tuberculosis?
-
-What lifestyle changes help manage hypertension?
-
-What are the side effects of metformin?
 ```
+Overall Accuracy  : 7/8  (87.5%)
+Avg Response Time : 15.2s per query
 
----
-
-# Evaluation
-
-Run:
+Category Breakdown:
+  Symptoms     ██  2/2  (100%)
+  Dosage       █   1/1  (100%)
+  Treatment    ██  2/2  (100%)
+  Definition   █   1/1  (100%)
+  Medication   █░  1/2   (50%)
+```
 
 ```bash
 python evaluate.py
 ```
 
-This tests retrieval and answer quality on predefined clinical questions.
+### Adversarial stress test (20 queries, 4 categories)
+
+```
+Overall Pass Rate : 15/20  (75%)
+
+Category Breakdown:
+  Hallucination Bait     ███░░  3/5  (60%)
+  Keyword Fidelity       █████  5/5 (100%)
+  Out-of-Scope           █████  5/5 (100%)
+  Adversarial Phrasing   ██░░░  2/5  (40%)
+```
+
+```bash
+python stress_test.py
+```
 
 ---
 
-# Team
+## Key design decisions
 
-| Name           | Role                     |
-| -------------- | ------------------------ |
-| Vishva James   | Lead / RAG Architecture  |
-| Karishma Sri K | LangGraph Agent Workflow |
-| Sujitha V      | Data Pipeline & UI       |
+**Why LangGraph over LangChain AgentExecutor?**
+LangGraph gives explicit control over the agent's state machine — every node, edge, and conditional branch is visible and debuggable. AgentExecutor is a black box. For a healthcare system where auditability matters, the graph-based approach is the right call.
 
-Institution:
+**Why S-PubMedBert-MS-MARCO over all-MiniLM?**
+General-purpose embedding models don't understand that "myocardial infarction" and "chest pain" are semantically related. The PubMedBert model was fine-tuned on biomedical literature and dramatically improves retrieval precision for clinical queries.
 
-**SRM Madurai College of Engineering and Technology**
+**Why a grader node?**
+Raw FAISS retrieval returns the top-K most similar chunks — but similar doesn't mean relevant. A query about "malaria treatment" can retrieve chunks about mosquito nets (similar topic, wrong content). The grader filters these out before they pollute the generator's context.
 
----
-
-# Links
-
-GitHub Repository:
-
-https://github.com/Vishvaleon/mediquery
-
-Live Demo:
-
-https://showing-fade-mowing.ngrok-free.dev/
+**Why a confidence scorer?**
+Hallucination is the #1 risk in clinical AI. The confidence node forces the LLM to self-evaluate every answer and flag uncertainty explicitly. Low-confidence answers (score ≤5) signal to the user that they should verify with a clinician.
 
 ---
 
-# License
+## Example queries
 
-MIT License
+```
+What is the first-line treatment for tuberculosis?
+What are the symptoms of pneumonia?
+What is the maximum daily dose of ibuprofen for adults?
+What medications treat uncomplicated malaria?
+What are the gastrointestinal side effects of metformin?
+What lifestyle changes help manage hypertension?
+```
+
+---
+
+## Team
+
+| Name | Role | Profile |
+|---|---|---|
+| Vishva James | Lead / RAG core / Architecture | [GitHub](https://github.com/Vishvaleon) · [LinkedIn](https://linkedin.com/in/vishva17) |
+| Karishma Sri K | Agentic loop / LangGraph | [GitHub](https://github.com/Karishmasri07) |
+| Sujitha V | Data pipeline / UI / Deployment | [GitHub](https://github.com/Sujithavenkatraj) |
+
+**Institution:** SRM Madurai College of Engineering and Technology, Sivagangai
+
+---
+
+## Live demo
+
+🔗 **[MediQuery](https://showing-fade-mowing.ngrok-free.dev/)**
+📁 **[GitHub Repository](https://github.com/Vishvaleon/mediquery)**
+
+---
+
+## License
+
+MIT License — see [LICENSE](LICENSE) for details.
+
+---
+
+<div align="center">
+  Built for <strong>The Arch: RAG and Agentic AI Hackathon</strong> · IIT Kharagpur · 2026
+</div>
+```
