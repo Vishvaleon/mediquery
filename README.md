@@ -1,3 +1,4 @@
+```markdown
 # 🏥 MediQuery — Agentic Clinical RAG System
 
 > **The Arch: RAG and Agentic AI Hackathon** · IIT Kharagpur · Healthcare Track  
@@ -92,13 +93,15 @@ mediquery/
 ├── ingestor.py         ← PDF loader, chunker, embedding pipeline
 ├── config.py           ← Model names, paths, chunk settings
 ├── evaluate.py         ← 8-query evaluation suite with category breakdown
-├── stress_test.py      ← 20-query adversarial stress test (5 failure modes)
+├── stress_test.py      ← 20-query adversarial stress test (4 failure modes)
 ├── debug_check.py      ← Vectorstore keyword coverage diagnostic
 ├── requirements.txt
 ├── README.md
 ├── assets/
 │   ├── architecture.png
 │   ├── demo_screenshot.png
+│   ├── reasoning_trace.png
+│   ├── confidence_bar.png
 │   └── stress_test_results.txt
 └── data/
     ├── raw/            ← Drop medical PDFs here (gitignored)
@@ -119,7 +122,7 @@ mediquery/
 ### 1. Clone the repo
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/mediquery.git
+git clone https://github.com/Vishvaleon/mediquery.git
 cd mediquery
 ```
 
@@ -202,25 +205,22 @@ Category Breakdown:
   Medication   █░  1/2   (50%)
 ```
 
-Run it yourself:
 ```bash
 python evaluate.py
 ```
 
-### Adversarial stress test (20 queries, 5 categories)
+### Adversarial stress test (20 queries, 4 categories)
 
 ```
 Overall Pass Rate : 15/20  (75%)
 
 Category Breakdown:
-  Hallucination bait     ███░  3/4  (75%)
-  Out-of-scope           ████  4/4 (100%)
-  Specificity stress     ████  4/4 (100%)
-  Ambiguous query        ███░  3/4  (75%)
-  Multi-hop reasoning    █░░░  1/4  (25%)
+  Hallucination Bait     ███░░  3/5  (60%)
+  Keyword Fidelity       █████  5/5 (100%)
+  Out-of-Scope           █████  5/5 (100%)
+  Adversarial Phrasing   ██░░░  2/5  (40%)
 ```
 
-Run it yourself:
 ```bash
 python stress_test.py
 ```
@@ -229,16 +229,16 @@ python stress_test.py
 
 ## Key design decisions
 
-**Why LangGraph over LangChain AgentExecutor?**  
+**Why LangGraph over LangChain AgentExecutor?**
 LangGraph gives explicit control over the agent's state machine — every node, edge, and conditional branch is visible and debuggable. AgentExecutor is a black box. For a healthcare system where auditability matters, the graph-based approach is the right call.
 
-**Why S-PubMedBert-MS-MARCO over all-MiniLM?**  
+**Why S-PubMedBert-MS-MARCO over all-MiniLM?**
 General-purpose embedding models don't understand that "myocardial infarction" and "chest pain" are semantically related. The PubMedBert model was fine-tuned on biomedical literature and dramatically improves retrieval precision for clinical queries.
 
-**Why a grader node?**  
+**Why a grader node?**
 Raw FAISS retrieval returns the top-K most similar chunks — but similar doesn't mean relevant. A query about "malaria treatment" can retrieve chunks about mosquito nets (similar topic, wrong content). The grader filters these out before they pollute the generator's context.
 
-**Why a confidence scorer?**  
+**Why a confidence scorer?**
 Hallucination is the #1 risk in clinical AI. The confidence node forces the LLM to self-evaluate every answer and flag uncertainty explicitly. Low-confidence answers (score ≤5) signal to the user that they should verify with a clinician.
 
 ---
@@ -261,8 +261,8 @@ What lifestyle changes help manage hypertension?
 | Name | Role | Profile |
 |---|---|---|
 | Vishva James | Lead / RAG core / Architecture | [GitHub](https://github.com/Vishvaleon) · [LinkedIn](https://linkedin.com/in/vishva17) |
-| Member 2 | Agentic loop / LangGraph | GitHub |
-| Member 3 | Data pipeline / UI / Deployment | GitHub |
+| Karishma Sri K | Agentic loop / LangGraph | [GitHub](https://github.com/Karishmasri07) |
+| Sujitha V | Data pipeline / UI / Deployment | [GitHub](https://github.com/Sujithavenkatraj) |
 
 **Institution:** SRM Madurai College of Engineering and Technology, Sivagangai
 
@@ -270,8 +270,8 @@ What lifestyle changes help manage hypertension?
 
 ## Live demo
 
-🔗 **[Live Demo](YOUR_DEMO_LINK_HERE)**  
-📁 **[GitHub Repository](https://github.com/YOUR_USERNAME/mediquery)**
+🔗 **[MediQuery](https://showing-fade-mowing.ngrok-free.dev/)**
+📁 **[GitHub Repository](https://github.com/Vishvaleon/mediquery)**
 
 ---
 
@@ -282,5 +282,6 @@ MIT License — see [LICENSE](LICENSE) for details.
 ---
 
 <div align="center">
-  Built for <strong>The Arch: RAG and Agentic AI Hackathon</strong> · IIT Kharagpur · 2025
+  Built for <strong>The Arch: RAG and Agentic AI Hackathon</strong> · IIT Kharagpur · 2026
 </div>
+```
