@@ -20,15 +20,20 @@ load_dotenv()
 import streamlit as st
 
 GOOGLE_API_KEY = (
-    st.secrets.get("GOOGLE_API_KEY")          # Streamlit Cloud
-    or os.getenv("GOOGLE_API_KEY")            # local .env
-    or "YOUR_GEMINI_API_KEY_HERE"
+    st.secrets.get("GOOGLE_API_KEY", None)
+    or os.getenv("GOOGLE_API_KEY")
 )
 
+if not GOOGLE_API_KEY:
+    raise ValueError(
+        "GOOGLE_API_KEY not found. "
+        "Set it in Streamlit Secrets or .env"
+    )
+
 llm_chat = ChatGoogleGenerativeAI(
-    model="gemini-1.5-flash",
+    model="gemini-2.5-flash",
+    google_api_key=GOOGLE_API_KEY,
     temperature=0,
-    google_api_key=GOOGLE_API_KEY
 )
 
 
