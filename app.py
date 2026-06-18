@@ -212,7 +212,7 @@ if "total_rewrites" not in st.session_state:
 
 with st.sidebar:
     st.markdown("### 🏥 MediQuery")
-    st.caption("Agentic RAG · LangGraph · Ollama")
+    st.caption("Agentic RAG · LangGraph · Gemini 1.5 Flash")
     st.divider()
 
     # Session metrics
@@ -261,7 +261,7 @@ with st.sidebar:
 5. **Rewriter** — rewrites query if no relevant chunks found (max 2×)
 6. **Confidence** — scores answer reliability 1–10
 
-Built with LangGraph + Ollama (llama3) + FAISS
+Built with LangGraph + Google Gemini 1.5 Flash + FAISS
         """)
 
 # ─── Header ──────────────────────────────────────────────────────────────────
@@ -271,7 +271,7 @@ st.markdown("""
   <span style="font-size:36px">🏥</span>
   <div>
     <p class="mq-title">MediQuery</p>
-    <p class="mq-caption">Clinical AI Assistant · Agentic RAG · LangGraph + Ollama · Local &amp; Private</p>
+    <p class="mq-caption">Clinical AI Assistant · Agentic RAG · LangGraph + Gemini · Local &amp; Private</p>
   </div>
 </div>
 """, unsafe_allow_html=True)
