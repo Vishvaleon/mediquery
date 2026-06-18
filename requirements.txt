@@ -20,6 +20,9 @@ faiss-cpu
 pandas==2.3.3
 numpy
 
+langchain-google-genai>=2.0.0
+google-generativeai>=0.8.5
+
 ollama==0.6.2
 
 python-dotenv==1.1.1
