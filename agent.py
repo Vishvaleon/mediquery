@@ -1,13 +1,35 @@
 from typing import TypedDict, List, Literal
 from langchain_core.documents import Document
-from langchain_ollama import OllamaLLM
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import PromptTemplate
+from langchain_core.messages import HumanMessage
 from langgraph.graph import StateGraph, END
 
 from retriever import load_retriever
-from config import MODEL_NAME
 
 import json
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# ------------------------------------------------------------------
+# Gemini LLM Setup
+# ------------------------------------------------------------------
+
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "YOUR_GEMINI_API_KEY_HERE")
+
+llm_chat = ChatGoogleGenerativeAI(
+    model="gemini-1.5-flash",
+    temperature=0,
+    google_api_key=GOOGLE_API_KEY
+)
+
+
+def llm_invoke(prompt: str) -> str:
+    """Helper to invoke Gemini and return plain text."""
+    response = llm_chat.invoke([HumanMessage(content=prompt)])
+    return response.content.strip()
 
 
 # ------------------------------------------------------------------
@@ -25,16 +47,6 @@ class AgentState(TypedDict):
     route: str
     confidence_score: int
     confidence_reason: str
-
-
-# ------------------------------------------------------------------
-# LLM
-# ------------------------------------------------------------------
-
-llm = OllamaLLM(
-    model=MODEL_NAME,
-    temperature=0
-)
 
 
 # ------------------------------------------------------------------
@@ -79,11 +91,7 @@ def planner_node(state: AgentState) -> AgentState:
 
     log("[Planner] Deciding retrieval strategy...")
 
-    response = llm.invoke(
-        PLANNER_PROMPT.format(
-            query=state["query"]
-        )
-    )
+    response = llm_invoke(PLANNER_PROMPT.format(query=state["query"]))
 
     route = (
         "retrieve"
@@ -114,7 +122,6 @@ def retriever_node(state: AgentState) -> AgentState:
     log(f"[Retriever] Searching vectorstore for: '{query}'")
 
     retriever = load_retriever()
-
     docs = retriever.invoke(query)
 
     log(f"[Retriever] Found {len(docs)} chunks")
@@ -161,7 +168,7 @@ def grader_node(state: AgentState) -> AgentState:
                 .replace('\n', ' ')
             )
 
-            response = llm.invoke(
+            response = llm_invoke(
                 GRADER_PROMPT.format(
                     query=state["query"],
                     doc=safe_content
@@ -176,7 +183,6 @@ def grader_node(state: AgentState) -> AgentState:
             if start != -1 and end > start:
 
                 json_str = raw[start:end]
-
                 json_str = ''.join(
                     c for c in json_str
                     if ord(c) >= 32
@@ -188,12 +194,9 @@ def grader_node(state: AgentState) -> AgentState:
                     graded.append(doc)
 
         except Exception as e:
-
-            # on parse error, keep the chunk
             log(f"[Grader] Parse error: {e} — keeping chunk by default")
             graded.append(doc)
 
-    # fallback: if grader rejected everything, pass all chunks through
     if not graded:
         log("[Grader] All chunks rejected — falling back to full retrieved set")
         graded = state["retrieved_docs"]
@@ -249,10 +252,7 @@ def generator_node(state: AgentState) -> AgentState:
 
         log("[Generator] Using direct answer (no graded docs or direct route)")
 
-        answer = llm.invoke(
-            DIRECT_PROMPT.format(query=state["query"])
-        )
-
+        answer = llm_invoke(DIRECT_PROMPT.format(query=state["query"]))
         sources = ["General medical knowledge"]
 
     else:
@@ -266,7 +266,7 @@ def generator_node(state: AgentState) -> AgentState:
             ]
         )
 
-        answer = llm.invoke(
+        answer = llm_invoke(
             GENERATOR_PROMPT.format(
                 query=state["query"],
                 context=context
@@ -319,7 +319,7 @@ def confidence_node(state: AgentState) -> AgentState:
 
     try:
 
-        response = llm.invoke(
+        response = llm_invoke(
             CONFIDENCE_PROMPT.format(
                 query=state["query"],
                 answer=state["answer"][:500]
@@ -334,7 +334,6 @@ def confidence_node(state: AgentState) -> AgentState:
         if start != -1 and end > start:
 
             json_str = raw[start:end]
-
             json_str = ''.join(
                 c for c in json_str
                 if ord(c) >= 32
@@ -377,9 +376,7 @@ def rewrite_node(state: AgentState) -> AgentState:
 
     log(f"[Rewriter] Attempt {count}")
 
-    rewritten = llm.invoke(
-        REWRITE_PROMPT.format(query=state["query"])
-    )
+    rewritten = llm_invoke(REWRITE_PROMPT.format(query=state["query"]))
 
     # take first line only — prevents multi-line bullet responses
     rewritten = rewritten.strip().split('\n')[0].strip()
@@ -410,8 +407,6 @@ def route_after_grader(
     state: AgentState
 ) -> Literal["generator", "rewrite"]:
 
-    # grader fallback already fills graded_docs if 0 passed,
-    # so this only triggers rewrite when genuinely 0 docs returned
     if (
         not state["graded_docs"]
         and state.get("rewrite_count", 0) < 2
