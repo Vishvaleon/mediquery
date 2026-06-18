@@ -17,7 +17,13 @@ load_dotenv()
 # Gemini LLM Setup
 # ------------------------------------------------------------------
 
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY", "YOUR_GEMINI_API_KEY_HERE")
+import streamlit as st
+
+GOOGLE_API_KEY = (
+    st.secrets.get("GOOGLE_API_KEY")          # Streamlit Cloud
+    or os.getenv("GOOGLE_API_KEY")            # local .env
+    or "YOUR_GEMINI_API_KEY_HERE"
+)
 
 llm_chat = ChatGoogleGenerativeAI(
     model="gemini-1.5-flash",
