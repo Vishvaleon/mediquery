@@ -7,48 +7,30 @@ from config import (
     TOP_K
 )
 
+_embeddings = None
+_vectorstore = None
+
 
 def load_retriever():
+    global _embeddings, _vectorstore
 
-    embeddings = HuggingFaceEmbeddings(
-        model_name=EMBED_MODEL
-    )
+    if _embeddings is None:
+        _embeddings = HuggingFaceEmbeddings(
+            model_name=EMBED_MODEL
+        )
 
-    vectorstore = FAISS.load_local(
-        VECTORSTORE_PATH,
-        embeddings,
-        allow_dangerous_deserialization=True
-    )
+    if _vectorstore is None:
+        _vectorstore = FAISS.load_local(
+            VECTORSTORE_PATH,
+            _embeddings,
+            allow_dangerous_deserialization=True
+        )
 
-    return vectorstore.as_retriever(
+    return _vectorstore.as_retriever(
         search_kwargs={"k": TOP_K}
     )
 
 
 def retrieve(query: str):
-
     retriever = load_retriever()
-
-    # LangChain 1.x API
-    docs = retriever.invoke(query)
-
-    return docs
-
-
-if __name__ == "__main__":
-
-    query = "What are symptoms of pneumonia?"
-
-    results = retrieve(query)
-
-    print(f"\nQuery: {query}")
-    print(f"Retrieved {len(results)} chunks\n")
-
-    for i, doc in enumerate(results, start=1):
-
-        print("=" * 60)
-        print(f"Chunk {i}")
-        print("=" * 60)
-
-        print(doc.page_content[:300])
-        print()
+    return retriever.invoke(query)
